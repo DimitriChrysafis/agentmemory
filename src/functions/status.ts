@@ -1,4 +1,4 @@
-import { V8_MAX_STRING_CHARS, type IndexLegStatus, type IndexPersistenceStatus } from "../state/index-persistence.js";
+import type { IndexLegStatus, IndexPersistenceStatus } from "../state/index-persistence.js";
 
 export type StatusLevel = "ok" | "info" | "warn" | "error";
 
@@ -57,6 +57,8 @@ export interface StatusInputs {
     observationsIndexed: number;
     missingObservations: number | null;
     sessions: number | null;
+    bm25Incomplete: boolean;
+    pendingVectorBackfill: number;
   };
   graph: GraphStatsInput | null;
   graphExtractionEnabled: boolean;
@@ -85,7 +87,6 @@ export interface StatusReport {
 const FAILURE_RATE_THRESHOLD = 0.2;
 const FAILURE_MIN_CALLS = 5;
 const GRAPH_SNAPSHOT_STALE_SECONDS = 24 * 60 * 60;
-const VECTOR_STRING_WARN_RATIO = 0.8;
 const LEVEL_RANK: Record<StatusLevel, number> = { ok: 0, info: 1, warn: 2, error: 3 };
 
 const FUNCTION_FIXES: Record<string, string> = {
@@ -173,41 +174,53 @@ export function evaluateStatus(input: StatusInputs): StatusReport {
     });
   }
 
+  if (input.index.bm25Incomplete) {
+    problems.push({
+      level: "error",
+      code: "bm25-rebuild-incomplete",
+      message: "The keyword index could not load every session at boot, so some observations are missing from search until the next successful rebuild.",
+      fix: "Check the server log for the session listing failure. Restarting or the next cold-start search retries automatically.",
+    });
+  }
+
+  if (input.index.pendingVectorBackfill > 0) {
+    problems.push({
+      level: "info",
+      code: "index-vector-backfill-pending",
+      message: `${input.index.pendingVectorBackfill} documents are waiting for a vector embedding.`,
+      fix: "This runs in the background and is capped per boot by AGENTMEMORY_VECTOR_BACKFILL_MAX. If it is stuck at a nonzero count with no embedding provider errors, set AGENTMEMORY_VECTOR_BACKFILL=all to run a full backfill.",
+    });
+  }
+
   const persistence = input.indexPersistence ?? null;
-  if (persistence) {
-    const legs: Array<[string, IndexLegStatus | null]> = [
-      ["BM25", persistence.bm25],
-      ["vector", persistence.vector],
-    ];
-    for (const [label, leg] of legs) {
-      if (!leg) continue;
-      if (leg.lastError) {
-        problems.push({
-          level: "error",
-          code: "index-save-failing",
-          message: `The ${label} search index could not be saved: ${leg.lastError}. Search keeps working from memory, but changes since the last save are lost on restart.`,
-          fix: "Check the server log for the failing state write. The next save retries automatically.",
-        });
-      }
-      const dirtyAge = secondsBetween(input.now, leg.dirtySince ?? undefined);
-      if (!leg.lastError && dirtyAge !== null && dirtyAge * 1000 > 2 * persistence.saveIntervalMs) {
-        problems.push({
-          level: "warn",
-          code: "index-save-stale",
-          message: `The ${label} search index has unsaved changes from ${formatDuration(dirtyAge)} ago.`,
-          fix: "Saves run at most once per AGENTMEMORY_INDEX_SAVE_INTERVAL_MS. Check the server log for save errors or a save that never finishes.",
-        });
-      }
-    }
-    const vectorChars = persistence.vector?.serializedChars ?? null;
-    if (vectorChars !== null && vectorChars > V8_MAX_STRING_CHARS * VECTOR_STRING_WARN_RATIO) {
+  const vectorLeg = persistence?.vector ?? null;
+  if (persistence && vectorLeg) {
+    if (vectorLeg.lastError) {
       problems.push({
-        level: "warn",
-        code: "vector-index-near-string-limit",
-        message: `The saved vector index is ${Math.round((vectorChars / V8_MAX_STRING_CHARS) * 100)}% of the largest string Node.js can hold. Past that limit it can no longer be saved or loaded.`,
-        fix: "Upgrade agentmemory once bucketed vector storage ships, or reduce the index (a smaller embedding model, or forget unused observations) before it reaches the limit.",
+        level: "error",
+        code: "index-save-failing",
+        message: `The vector index could not be saved: ${vectorLeg.lastError}. Search keeps working from memory, but vectors added since the last save are lost on restart.`,
+        fix: "Check the server log for the failing state write. The next save retries automatically.",
       });
     }
+    const dirtyAge = secondsBetween(input.now, vectorLeg.dirtySince ?? undefined);
+    if (!vectorLeg.lastError && dirtyAge !== null && dirtyAge * 1000 > 2 * persistence.saveIntervalMs) {
+      problems.push({
+        level: "warn",
+        code: "index-save-stale",
+        message: `The vector index has unsaved changes from ${formatDuration(dirtyAge)} ago.`,
+        fix: "Saves run at most once per AGENTMEMORY_INDEX_SAVE_INTERVAL_MS. Check the server log for save errors or a save that never finishes.",
+      });
+    }
+  }
+  if (persistence?.vectorCountShortfall) {
+    const { expected, loaded } = persistence.vectorCountShortfall;
+    problems.push({
+      level: "warn",
+      code: "index-vector-count-shortfall",
+      message: `Only ${loaded} of ${expected} vectors loaded from the last save; a bounded backfill re-embeds the rest.`,
+      fix: "No action needed — missing vectors are queued for backfill up to the per-boot cap.",
+    });
   }
 
   let graph: StatusReport["graph"] = null;
@@ -300,16 +313,13 @@ function legSummary(report: StatusReport, leg: IndexLegStatus): string {
 function indexPersistenceRows(report: StatusReport): string {
   const persistence = report.indexPersistence;
   if (!persistence) return "";
-  let rows = row("BM25 save", escapeHtml(legSummary(report, persistence.bm25)));
+  let rows = row("BM25 index", "rebuilt from stored content at boot");
   if (persistence.vector) {
     rows += row("Vector save", escapeHtml(legSummary(report, persistence.vector)));
-    const chars = persistence.vector.serializedChars;
-    if (chars !== null) {
-      rows += row(
-        "Vector index size",
-        escapeHtml(`${chars.toLocaleString("en-US")} characters (${Math.round((chars / V8_MAX_STRING_CHARS) * 100)}% of the Node.js string limit)`),
-      );
-    }
+    rows += row(
+      "Vector storage",
+      escapeHtml(`${persistence.buckets} buckets, ${persistence.pendingChanges} unsaved changes`),
+    );
   }
   return rows;
 }
@@ -396,6 +406,8 @@ ${row("Vector documents", escapeHtml(idx.vectorDocuments ?? "vector search off")
 ${row("Observations indexed", escapeHtml(idx.observationsIndexed))}
 ${row("Missing from index", escapeHtml(idx.missingObservations ?? "not checked"))}
 ${row("Sessions", escapeHtml(idx.sessions ?? "unknown"))}
+${row("BM25 rebuild", idx.bm25Incomplete ? '<span class="warn">incomplete</span>' : "complete")}
+${row("Pending vector backfill", escapeHtml(idx.pendingVectorBackfill))}
 ${indexPersistenceRows(report)}
 </table>
 <h2>Knowledge graph</h2><table>
