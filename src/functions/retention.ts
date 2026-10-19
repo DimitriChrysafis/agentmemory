@@ -377,12 +377,12 @@ export function registerRetentionFunctions(
             await decrementImageRef(kv, sdk, mem.imageRef);
           }
           await kv.delete(scope, candidate.memoryId);
+          evictedIds.push(candidate.memoryId);
           await kv.delete(KV.retentionScores, candidate.memoryId);
           await deleteAccessLog(kv, candidate.memoryId);
           getSearchIndex().remove(candidate.memoryId);
           vectorIndexRemove(candidate.memoryId);
           evicted++;
-          evictedIds.push(candidate.memoryId);
           if (resolvedSource === "semantic") evictedSemantic++;
           else evictedEpisodic++;
         } catch {
