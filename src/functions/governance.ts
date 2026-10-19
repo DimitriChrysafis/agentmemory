@@ -11,22 +11,6 @@ import { logger } from "../logger.js";
 const BULK_FILTER_KEYS = ["type", "dateFrom", "dateTo", "project", "qualityBelow"];
 const BULK_CONTROL_KEYS = ["dryRun", "reason"];
 
-async function confirmedMissingIds(
-  kv: StateKV,
-  ids: string[],
-): Promise<string[]> {
-  const checks = await Promise.all(
-    ids.map(async (id) => {
-      try {
-        return (await kv.get(KV.semantic, id)) ? null : id;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return checks.filter((id): id is string => id !== null);
-}
-
 type DeleteFailure = { id: string; error: string };
 
 function errorMessage(err: unknown): string {
@@ -76,13 +60,10 @@ export function registerGovernanceFunction(sdk: IIIClient, kv: StateKV): void {
         }
       }
 
-      // notFound ids that are also absent from KV.semantic are confirmed gone,
-      // so their facets are already orphans — sweeping them lets a retried
-      // delete clean up after a partial failure or an older version.
-      await deleteFacetsForTargets(kv, [
-        ...deletedIds,
-        ...(await confirmedMissingIds(kv, notFound)),
-      ]);
+      // Sweeping notFound ids too lets a retried delete clean up after a
+      // partial failure or an older version; the helper itself skips ids that
+      // still resolve in either memory scope.
+      await deleteFacetsForTargets(kv, [...deletedIds, ...notFound]);
 
       const deleted = deletedIds.length;
       if (deleted > 0) await flushIndexSave();
@@ -218,10 +199,7 @@ export function registerGovernanceFunction(sdk: IIIClient, kv: StateKV): void {
         });
       }
 
-      await deleteFacetsForTargets(kv, [
-        ...successfulIds,
-        ...(await confirmedMissingIds(kv, notFound)),
-      ]);
+      await deleteFacetsForTargets(kv, [...successfulIds, ...notFound]);
 
       if (successfulIds.length > 0) await flushIndexSave();
 

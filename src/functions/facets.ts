@@ -12,9 +12,26 @@ export async function deleteFacetsForTargets(
   ids.delete("");
   if (ids.size === 0) return;
   try {
+    const live = new Set<string>();
+    await Promise.all(
+      [...ids].map(async (id) => {
+        try {
+          const [mem, sem] = await Promise.all([
+            kv.get(KV.memories, id),
+            kv.get(KV.semantic, id),
+          ]);
+          if (mem || sem) live.add(id);
+        } catch {
+          live.add(id);
+        }
+      }),
+    );
     const all = await kv.list<Facet>(KV.facets);
     const matches = all.filter(
-      (f) => ids.has(f.targetId) && f.targetType === "memory",
+      (f) =>
+        ids.has(f.targetId) &&
+        !live.has(f.targetId) &&
+        f.targetType === "memory",
     );
     await Promise.all(matches.map((f) => kv.delete(KV.facets, f.id)));
   } catch (err) {
