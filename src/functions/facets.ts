@@ -15,14 +15,22 @@ export async function deleteFacetsForTargets(
     const live = new Set<string>();
     await Promise.all(
       [...ids].map(async (id) => {
-        try {
-          const [mem, sem] = await Promise.all([
-            kv.get(KV.memories, id),
-            kv.get(KV.semantic, id),
-          ]);
-          if (mem || sem) live.add(id);
-        } catch {
-          live.add(id);
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const [mem, sem] = await Promise.all([
+              kv.get(KV.memories, id),
+              kv.get(KV.semantic, id),
+            ]);
+            if (mem || sem) live.add(id);
+            return;
+          } catch {
+            if (attempt === 1) {
+              live.add(id);
+              logger.warn("Facet cleanup skipped unverifiable target", {
+                targetId: id,
+              });
+            }
+          }
         }
       }),
     );
