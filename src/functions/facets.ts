@@ -13,7 +13,9 @@ export async function deleteFacetsForTargets(
   if (ids.size === 0) return;
   try {
     const all = await kv.list<Facet>(KV.facets);
-    const matches = all.filter((f) => ids.has(f.targetId));
+    const matches = all.filter(
+      (f) => ids.has(f.targetId) && f.targetType === "memory",
+    );
     await Promise.all(matches.map((f) => kv.delete(KV.facets, f.id)));
   } catch (err) {
     logger.warn("Facet cleanup failed", {

@@ -334,7 +334,6 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
 
       const memories = await kv.list<Memory>(KV.memories).catch(() => []);
       const evictedMemIds = new Set<string>();
-      const deletedMemIds = new Set<string>();
       for (const mem of memories) {
         if (mem.forgetAfter) {
           const expiry = new Date(mem.forgetAfter).getTime();
@@ -365,7 +364,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                 dryRun,
               });
               await deleteAccessLog(kv, mem.id);
-              deletedMemIds.add(mem.id);
+              await deleteFacetsForTargets(kv, [mem.id]);
             }
           }
         }
@@ -401,13 +400,11 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                 dryRun,
               });
               await deleteAccessLog(kv, mem.id);
-              deletedMemIds.add(mem.id);
+              await deleteFacetsForTargets(kv, [mem.id]);
             }
           }
         }
       }
-
-      await deleteFacetsForTargets(kv, deletedMemIds);
 
       if (indexCleaned) await flushIndexSave();
       logger.info("Eviction complete", { stats });

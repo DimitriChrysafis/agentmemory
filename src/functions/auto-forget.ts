@@ -58,14 +58,13 @@ export function registerAutoForgetFunction(sdk: IIIClient, kv: StateKV): void {
                 timestamp: mem.forgetAfter,
               });
               await deleteAccessLog(kv, mem.id);
+              await deleteFacetsForTargets(kv, [mem.id]);
               getSearchIndex().remove(mem.id);
               vectorIndexRemove(mem.id);
             }
           }
         }
       }
-
-      if (!dryRun) await deleteFacetsForTargets(kv, deletedIds);
 
       const latestMemories = memories
         .filter((m) => m.isLatest !== false && !deletedIds.has(m.id))
