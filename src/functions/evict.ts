@@ -15,6 +15,7 @@ import { unindexObservationSession } from "../state/obs-index.js";
 import { isConsolidationEnabled } from "../config.js";
 import { recordAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
+import { deleteFacetsForTarget } from "./facets.js";
 import { getSearchIndex, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { logger } from "../logger.js";
 
@@ -363,6 +364,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                 dryRun,
               });
               await deleteAccessLog(kv, mem.id);
+              await deleteFacetsForTarget(kv, mem.id);
             }
           }
         }
@@ -398,6 +400,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                 dryRun,
               });
               await deleteAccessLog(kv, mem.id);
+              await deleteFacetsForTarget(kv, mem.id);
             }
           }
         }

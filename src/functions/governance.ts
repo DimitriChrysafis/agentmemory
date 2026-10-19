@@ -4,6 +4,7 @@ import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
 import { recordAudit, safeAudit, queryAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
+import { deleteFacetsForTarget } from "./facets.js";
 import { getSearchIndex, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { logger } from "../logger.js";
 
@@ -24,6 +25,7 @@ async function deleteMemoryRecord(
   if (!mem) return "missing";
   await kv.delete(KV.memories, id);
   await deleteAccessLog(kv, id);
+  await deleteFacetsForTarget(kv, id);
   getSearchIndex().remove(id);
   vectorIndexRemove(id);
   return "deleted";

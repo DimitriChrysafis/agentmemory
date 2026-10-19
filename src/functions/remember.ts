@@ -8,6 +8,7 @@ import { removeSessionFromProjectIndex } from "../state/session-index.js";
 import { unindexObservationSession } from "../state/obs-index.js";
 import { memoryToObservation } from "../state/memory-utils.js";
 import { deleteAccessLog } from "./access-tracker.js";
+import { deleteFacetsForTarget } from "./facets.js";
 import { recordAudit } from "./audit.js";
 import { getSearchIndex, getVectorIndex, isMemoryIndexReady, scheduleIndexSave, vectorIndexAddGuarded, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { getAgentId } from "../config.js";
@@ -340,8 +341,9 @@ export function registerRememberFunction(sdk: IIIClient, kv: StateKV): void {
           vectorIndexRemove(memoryId);
           indexCleaned = true;
           await cleanup(memoryId, async () => {
-            if (mem.imageRef) await decrementImageRef(kv, sdk, mem.imageRef);
             await deleteAccessLog(kv, memoryId);
+            await deleteFacetsForTarget(kv, memoryId);
+            if (mem.imageRef) await decrementImageRef(kv, sdk, mem.imageRef);
           });
           return true;
         });

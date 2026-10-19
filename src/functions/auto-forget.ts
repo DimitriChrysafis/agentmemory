@@ -7,6 +7,7 @@ import { withKeyedLock } from "../state/keyed-mutex.js";
 import { unindexObservationSession } from "../state/obs-index.js";
 import { recordAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
+import { deleteFacetsForTarget } from "./facets.js";
 import { getSearchIndex, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { logger } from "../logger.js";
 
@@ -57,6 +58,7 @@ export function registerAutoForgetFunction(sdk: IIIClient, kv: StateKV): void {
                 timestamp: mem.forgetAfter,
               });
               await deleteAccessLog(kv, mem.id);
+              await deleteFacetsForTarget(kv, mem.id);
               getSearchIndex().remove(mem.id);
               vectorIndexRemove(mem.id);
             }

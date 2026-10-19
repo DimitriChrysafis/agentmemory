@@ -2,6 +2,24 @@ import type { IIIClient } from "iii-sdk";
 import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import type { Facet } from "../types.js";
+import { logger } from "../logger.js";
+
+export async function deleteFacetsForTarget(
+  kv: StateKV,
+  targetId: string,
+): Promise<void> {
+  if (!targetId) return;
+  try {
+    const all = await kv.list<Facet>(KV.facets);
+    const matches = all.filter((f) => f.targetId === targetId);
+    await Promise.all(matches.map((f) => kv.delete(KV.facets, f.id)));
+  } catch (err) {
+    logger.warn("Facet cleanup failed", {
+      targetId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 export function registerFacetsFunction(sdk: IIIClient, kv: StateKV): void {
   sdk.registerFunction("mem::facet-tag", 

@@ -14,6 +14,7 @@ import {
   normalizeAccessLog,
 } from "./access-tracker.js";
 import { recordAudit, runAuditRetentionSweep } from "./audit.js";
+import { deleteFacetsForTarget } from "./facets.js";
 import { getSearchIndex, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { logger } from "../logger.js";
 import { getAuditRetentionMonths } from "../config.js";
@@ -364,6 +365,7 @@ export function registerRetentionFunctions(
           await kv.delete(scope, candidate.memoryId);
           await kv.delete(KV.retentionScores, candidate.memoryId);
           await deleteAccessLog(kv, candidate.memoryId);
+          await deleteFacetsForTarget(kv, candidate.memoryId);
           getSearchIndex().remove(candidate.memoryId);
           vectorIndexRemove(candidate.memoryId);
           evicted++;
