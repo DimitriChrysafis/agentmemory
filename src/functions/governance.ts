@@ -4,7 +4,7 @@ import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
 import { recordAudit, safeAudit, queryAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
-import { deleteFacetsForTarget } from "./facets.js";
+import { deleteFacetsForTargets } from "./facets.js";
 import { getSearchIndex, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { logger } from "../logger.js";
 
@@ -25,7 +25,6 @@ async function deleteMemoryRecord(
   if (!mem) return "missing";
   await kv.delete(KV.memories, id);
   await deleteAccessLog(kv, id);
-  await deleteFacetsForTarget(kv, id);
   getSearchIndex().remove(id);
   vectorIndexRemove(id);
   return "deleted";
@@ -60,6 +59,11 @@ export function registerGovernanceFunction(sdk: IIIClient, kv: StateKV): void {
           failures.push({ id, error: "delete_failed" });
         }
       }
+
+      // notFound ids are confirmed gone from the store, so their facets are
+      // already orphans — sweeping them lets a retried delete clean up after a
+      // partial failure or an older version.
+      await deleteFacetsForTargets(kv, [...deletedIds, ...notFound]);
 
       const deleted = deletedIds.length;
       if (deleted > 0) await flushIndexSave();
@@ -194,6 +198,8 @@ export function registerGovernanceFunction(sdk: IIIClient, kv: StateKV): void {
           }
         });
       }
+
+      await deleteFacetsForTargets(kv, [...successfulIds, ...notFound]);
 
       if (successfulIds.length > 0) await flushIndexSave();
 

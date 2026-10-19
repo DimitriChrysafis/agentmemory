@@ -4,18 +4,20 @@ import { KV, generateId } from "../state/schema.js";
 import type { Facet } from "../types.js";
 import { logger } from "../logger.js";
 
-export async function deleteFacetsForTarget(
+export async function deleteFacetsForTargets(
   kv: StateKV,
-  targetId: string,
+  targetIds: Iterable<string>,
 ): Promise<void> {
-  if (!targetId) return;
+  const ids = new Set(targetIds);
+  ids.delete("");
+  if (ids.size === 0) return;
   try {
     const all = await kv.list<Facet>(KV.facets);
-    const matches = all.filter((f) => f.targetId === targetId);
+    const matches = all.filter((f) => ids.has(f.targetId));
     await Promise.all(matches.map((f) => kv.delete(KV.facets, f.id)));
   } catch (err) {
     logger.warn("Facet cleanup failed", {
-      targetId,
+      targetIds: ids.size,
       error: err instanceof Error ? err.message : String(err),
     });
   }

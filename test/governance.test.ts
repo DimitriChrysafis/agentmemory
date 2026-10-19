@@ -162,6 +162,20 @@ describe("Governance Functions", () => {
     expect(remaining.map((f) => f.id)).toEqual(["fct_2"]);
   });
 
+  it("governance-delete sweeps facets for already-missing memories", async () => {
+    await kv.set("mem:facets", "fct_1", makeFacet("fct_1", "mem_gone"));
+    await kv.set("mem:facets", "fct_2", makeFacet("fct_2", "mem_2"));
+
+    const result = (await sdk.trigger("mem::governance-delete", {
+      memoryIds: ["mem_gone"],
+    })) as { success: boolean; deleted: number; notFound: string[] };
+
+    expect(result.deleted).toBe(0);
+    expect(result.notFound).toEqual(["mem_gone"]);
+    const remaining = await kv.list<Facet>("mem:facets");
+    expect(remaining.map((f) => f.id)).toEqual(["fct_2"]);
+  });
+
   it("governance-bulk removes facets for every deleted memory", async () => {
     await kv.set("mem:facets", "fct_1", makeFacet("fct_1", "mem_1"));
     await kv.set("mem:facets", "fct_2", makeFacet("fct_2", "mem_2"));

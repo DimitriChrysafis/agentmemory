@@ -15,7 +15,7 @@ import { unindexObservationSession } from "../state/obs-index.js";
 import { isConsolidationEnabled } from "../config.js";
 import { recordAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
-import { deleteFacetsForTarget } from "./facets.js";
+import { deleteFacetsForTargets } from "./facets.js";
 import { getSearchIndex, vectorIndexRemove, flushIndexSave } from "./search.js";
 import { logger } from "../logger.js";
 
@@ -334,6 +334,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
 
       const memories = await kv.list<Memory>(KV.memories).catch(() => []);
       const evictedMemIds = new Set<string>();
+      const deletedMemIds = new Set<string>();
       for (const mem of memories) {
         if (mem.forgetAfter) {
           const expiry = new Date(mem.forgetAfter).getTime();
@@ -364,7 +365,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                 dryRun,
               });
               await deleteAccessLog(kv, mem.id);
-              await deleteFacetsForTarget(kv, mem.id);
+              deletedMemIds.add(mem.id);
             }
           }
         }
@@ -400,11 +401,13 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                 dryRun,
               });
               await deleteAccessLog(kv, mem.id);
-              await deleteFacetsForTarget(kv, mem.id);
+              deletedMemIds.add(mem.id);
             }
           }
         }
       }
+
+      await deleteFacetsForTargets(kv, deletedMemIds);
 
       if (indexCleaned) await flushIndexSave();
       logger.info("Eviction complete", { stats });
