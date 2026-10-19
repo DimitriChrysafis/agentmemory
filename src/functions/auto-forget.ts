@@ -41,6 +41,7 @@ export function registerAutoForgetFunction(sdk: IIIClient, kv: StateKV): void {
 
       const memories = await kv.list<Memory>(KV.memories);
       const deletedIds = new Set<string>();
+      const facetIds = new Set<string>();
       try {
         for (const mem of memories) {
           if (mem.forgetAfter) {
@@ -53,6 +54,7 @@ export function registerAutoForgetFunction(sdk: IIIClient, kv: StateKV): void {
                   await decrementImageRef(kv, sdk, mem.imageRef);
                 }
                 await kv.delete(KV.memories, mem.id);
+                facetIds.add(mem.id);
                 await recordAudit(kv, "delete", "mem::auto-forget", [mem.id], {
                   resource: "memory",
                   reason: "auto-forget TTL",
@@ -66,7 +68,7 @@ export function registerAutoForgetFunction(sdk: IIIClient, kv: StateKV): void {
           }
         }
       } finally {
-        if (!dryRun) await deleteFacetsForTargets(kv, deletedIds);
+        await deleteFacetsForTargets(kv, facetIds);
       }
 
       const latestMemories = memories
