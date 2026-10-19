@@ -335,33 +335,40 @@ export function registerRetentionFunctions(
         try {
           let scope: string | null = null;
           let resolvedSource: "episodic" | "semantic" | null = null;
+          let mem: Memory | null = null;
           if (candidate.source === "semantic") {
-            scope = KV.semantic;
-            resolvedSource = "semantic";
+            mem = await kv.get<Memory>(KV.semantic, candidate.memoryId);
+            if (mem) {
+              scope = KV.semantic;
+              resolvedSource = "semantic";
+            }
           } else if (candidate.source === "episodic") {
-            scope = KV.memories;
-            resolvedSource = "episodic";
-          } else {
-            const episodic = await kv.get(KV.memories, candidate.memoryId);
-            if (episodic !== null) {
+            mem = await kv.get<Memory>(KV.memories, candidate.memoryId);
+            if (mem) {
+              scope = KV.memories;
+              resolvedSource = "episodic";
+            }
+          }
+          if (!mem) {
+            mem = await kv.get<Memory>(KV.memories, candidate.memoryId);
+            if (mem) {
               scope = KV.memories;
               resolvedSource = "episodic";
             } else {
-              const semantic = await kv.get(KV.semantic, candidate.memoryId);
-              if (semantic !== null) {
+              mem = await kv.get<Memory>(KV.semantic, candidate.memoryId);
+              if (mem) {
                 scope = KV.semantic;
                 resolvedSource = "semantic";
               }
             }
           }
 
-          if (!scope || !resolvedSource) {
+          if (!scope || !mem) {
             missingIds.push(candidate.memoryId);
             continue;
           }
 
-          const mem = await kv.get<Memory>(scope, candidate.memoryId);
-          if (mem && mem.imageRef) {
+          if (mem.imageRef) {
             await decrementImageRef(kv, sdk, mem.imageRef);
           }
           await kv.delete(scope, candidate.memoryId);
