@@ -180,6 +180,19 @@ describe("Governance Functions", () => {
     expect(remaining.map((f) => f.id).sort()).toEqual(["fct_2", "fct_obs"]);
   });
 
+  it("governance-delete keeps facets on live semantic records", async () => {
+    await kv.set("mem:semantic", "sem_1", { id: "sem_1", content: "x" });
+    await kv.set("mem:facets", "fct_s", makeFacet("fct_s", "sem_1"));
+
+    const result = (await sdk.trigger("mem::governance-delete", {
+      memoryIds: ["sem_1"],
+    })) as { notFound: string[] };
+
+    expect(result.notFound).toEqual(["sem_1"]);
+    const remaining = await kv.list<Facet>("mem:facets");
+    expect(remaining.map((f) => f.id)).toEqual(["fct_s"]);
+  });
+
   it("governance-bulk removes facets for every deleted memory", async () => {
     await kv.set("mem:facets", "fct_1", makeFacet("fct_1", "mem_1"));
     await kv.set("mem:facets", "fct_2", makeFacet("fct_2", "mem_2"));

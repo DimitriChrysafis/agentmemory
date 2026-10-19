@@ -346,6 +346,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
               } else {
                 try {
                   await kv.delete(KV.memories, mem.id);
+                  deletedMemIds.add(mem.id);
                   stats.expiredMemories++;
                   evictedMemIds.add(mem.id);
                 } catch (err) {
@@ -366,7 +367,6 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                   dryRun,
                 });
                 await deleteAccessLog(kv, mem.id);
-                deletedMemIds.add(mem.id);
               }
             }
           }
@@ -383,6 +383,7 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
               } else {
                 try {
                   await kv.delete(KV.memories, mem.id);
+                  deletedMemIds.add(mem.id);
                   stats.nonLatestMemories++;
                 } catch (err) {
                   logger.warn("Eviction delete failed", {
@@ -402,7 +403,6 @@ export function registerEvictFunction(sdk: IIIClient, kv: StateKV): void {
                   dryRun,
                 });
                 await deleteAccessLog(kv, mem.id);
-                deletedMemIds.add(mem.id);
               }
             }
           }

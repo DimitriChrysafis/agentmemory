@@ -335,7 +335,11 @@ export function registerRememberFunction(sdk: IIIClient, kv: StateKV): void {
         await attempt(memoryId, async () => {
           const mem = await kv.get<Memory>(KV.memories, memoryId);
           if (!mem) {
-            await deleteFacetsForTargets(kv, [memoryId]);
+            try {
+              if (!(await kv.get(KV.semantic, memoryId))) {
+                await deleteFacetsForTargets(kv, [memoryId]);
+              }
+            } catch {}
             return false;
           }
           await kv.delete(KV.memories, memoryId);
