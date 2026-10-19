@@ -349,7 +349,7 @@ export function registerRetentionFunctions(
               resolvedSource = "episodic";
             }
           }
-          if (!mem) {
+          if (!mem && !candidate.source) {
             mem = await kv.get<Memory>(KV.memories, candidate.memoryId);
             if (mem) {
               scope = KV.memories;
@@ -364,6 +364,11 @@ export function registerRetentionFunctions(
           }
 
           if (!scope || !mem) {
+            if (candidate.source) {
+              const other =
+                candidate.source === "semantic" ? KV.memories : KV.semantic;
+              if (await kv.get(other, candidate.memoryId)) continue;
+            }
             missingIds.push(candidate.memoryId);
             continue;
           }

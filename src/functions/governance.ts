@@ -15,13 +15,16 @@ async function confirmedMissingIds(
   kv: StateKV,
   ids: string[],
 ): Promise<string[]> {
-  const gone: string[] = [];
-  for (const id of ids) {
-    try {
-      if (!(await kv.get(KV.semantic, id))) gone.push(id);
-    } catch {}
-  }
-  return gone;
+  const checks = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return (await kv.get(KV.semantic, id)) ? null : id;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return checks.filter((id): id is string => id !== null);
 }
 
 type DeleteFailure = { id: string; error: string };
